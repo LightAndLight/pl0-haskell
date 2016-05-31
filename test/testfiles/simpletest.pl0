@@ -1,0 +1,12 @@
+type S = [1..5];
+var x : S;
+
+procedure asdf() =
+  type b = S;
+begin
+  write 2
+end;
+
+begin
+  read x
+end

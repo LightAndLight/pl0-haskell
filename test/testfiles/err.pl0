@@ -1,0 +1,29 @@
+const C = 42;
+type S = [0..d]; // subrange 0 to 42
+var b: boolean; // boolean variable
+    r: int; // integer variable
+    x: S; // subrange variable
+    res: int;
+
+procedure sum() =
+  var i: S; // local variable to sum
+begin // sum
+  i := 0;
+  res := 0;
+  while i != x do
+  begin
+    res := res + i;
+    i := i + 1
+  end
+end; // sum
+
+begin // main
+  read r;
+  b := (r <= C); // b is boolean
+  if b then
+    x := r
+  else
+    x := 0;
+  call sum();
+  write res
+end
