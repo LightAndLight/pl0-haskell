@@ -7,8 +7,8 @@ module PL0.StackMachine where
 
 import           PL0.StackMachine.Instruction
 
-import Control.Applicative (liftA2)
-import Control.Lens
+import           Control.Applicative (liftA2)
+import           Control.Lens
 import           Control.Monad.Except
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
