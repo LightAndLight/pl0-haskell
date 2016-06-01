@@ -120,13 +120,13 @@ interpreter = do
         NO_OP -> interpreter
         BR -> do
           offset <- pop
-          programCounter .= offset
+          programCounter += offset
           interpreter
         BR_FALSE -> do
           offset <- pop
           n <- pop
           case n of
-            0 -> programCounter .= offset
+            0 -> programCounter += offset
             _ -> return ()
           interpreter
         COPY -> do

@@ -25,6 +25,6 @@ main = do
           let mprogram = checkProgram tree' >>= generate
               program = flip evalState topLevelScope . runExceptT $ mprogram
           case program of
-            Right program' -> runProgramFrom 0 100 (getStackMachineCode program') >>= print
+            Right program' -> runProgramFrom 0 1000 (instructions program') >>= print
             Left err -> print err
         Left err -> print err

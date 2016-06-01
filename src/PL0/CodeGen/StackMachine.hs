@@ -1,8 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module PL0.CodeGen.StackMachine (
-  generate
-  , getStackMachineCode
+  instructions
+  , generate
 ) where
 
 import           PL0.AST
@@ -19,32 +19,29 @@ import           Control.Monad.State
 import           Data.Foldable
 import           Data.Monoid
 
-data StackMachineCode = StackMachineCode { getSize :: Int, getStackMachineCode :: [Instruction] }
-
-singleton :: Instruction -> StackMachineCode
-singleton a = StackMachineCode 1 [a]
-
-cons :: Instruction -> StackMachineCode -> StackMachineCode
-cons a (StackMachineCode s mc) = StackMachineCode (s + 1) $ a : mc
-
-prepend :: [Instruction] -> StackMachineCode -> StackMachineCode
-prepend as (StackMachineCode n mc) = StackMachineCode (n + length as) $ as ++ mc
+data StackMachineCode = StackMachineCode { getSize :: Int, instructions :: [Instruction] }
 
 instance Monoid StackMachineCode where
   mempty = StackMachineCode 0 []
   mappend (StackMachineCode s m) (StackMachineCode s' n) = StackMachineCode (s + s') $ m ++ n
 
+toCode :: [Instruction] -> StackMachineCode
+toCode is = StackMachineCode (length is) is
+
+singleton :: Instruction -> StackMachineCode
+singleton a = toCode [a]
+
 instance Code StackMachineCode where
-  generate (Tree block) = prepend [ZERO, ZERO, ZERO] <$> liftA2 mappend (genBlock block) (pure $ StackMachineCode 2 [ZERO,STOP])
+  generate (Tree block) = (toCode [ZERO, ZERO, ZERO] <>) <$> liftA2 mappend (genBlock block) (pure . toCode $ [ZERO,STOP])
 
   genBlock (Block decs st) = liftA2 mappend (genDeclarations decs) (genStatement st)
 
-  genAlloc n = StackMachineCode 2 [LOAD_CON n, ALLOC_STACK]
+  genAlloc n = toCode [LOAD_CON n, ALLOC_STACK]
 
   genStatement (Assignment lvalue expr) = do
-    ecode <- genExpression expr
-    lcode <- genExpression lvalue
-    return $ ecode <> lcode <> singleton STORE_FRAME
+    etoCode <- genExpression expr
+    ltoCode <- genExpression lvalue
+    return $ etoCode <> ltoCode <> singleton STORE_FRAME
   genStatement (Read e) = do
     ce <- genExpression e
     check <- case getType (dereference e) of
@@ -56,7 +53,16 @@ instance Code StackMachineCode where
     return $ singleton READ <> check <> ce <> singleton STORE_FRAME
   genStatement (Write e) = liftA2 mappend (genExpression e) (pure $ singleton WRITE)
   genStatement (While cond st) = undefined
-  genStatement (If cond th el) = undefined
+  genStatement (If cond th el) = do
+    ccond <- genExpression cond
+    cthen <- genStatement th
+    celse <- genStatement el
+    let cthen' = cthen <> toCode [LOAD_CON $ getSize celse, BR]
+    return $ ccond
+      <> toCode [LOAD_CON $ getSize cthen', BR_FALSE]
+      <> cthen'
+      <> celse
+
   genStatement (CallStatement name args) = undefined
   genStatement (Compound sts) = fold <$> traverse genStatement sts
   genStatement SError = throwError "called genStatement on SError"
@@ -71,30 +77,30 @@ instance Code StackMachineCode where
         case entry of
           Just (ConstEntry ty (Left expr)) -> do
             modify (addEntry name (ConstEntry ty (Right $ n + 3)))
-            liftA2 mappend (genExpression expr) (pure $ StackMachineCode 2 [LOAD_CON (n + 3), STORE_FRAME])
-          Just (ConstEntry ty _) -> error $ "codegen: " ++ name ++ " (const) already has an address"
-          Just _ -> error $ "codegen: " ++ name ++ " not a constant"
-          Nothing -> error $ "codegen: " ++ name ++ " not found"
+            liftA2 mappend (genExpression expr) (pure $ toCode [LOAD_CON (n + 3), STORE_FRAME])
+          Just (ConstEntry ty _) -> error $ "toCodegen: " ++ name ++ " (const) already has an address"
+          Just _ -> error $ "toCodegen: " ++ name ++ " not a constant"
+          Nothing -> error $ "toCodegen: " ++ name ++ " not found"
       genDec n (VarDecl name _) = do
         entry <- findEntry name <$> get
         case entry of
           Just (VarEntry ty Nothing) -> do
             modify (addEntry name (VarEntry ty (Just $ n + 3)))
             return mempty
-          Just (VarEntry ty _) -> error $ "codegen: " ++ name ++ " (var) already has an address"
-          Just _ -> error $ "codegen: " ++ name ++ " not a Variable"
-          Nothing -> error $ "codegen: " ++ name ++ " not found"
+          Just (VarEntry ty _) -> error $ "toCodegen: " ++ name ++ " (var) already has an address"
+          Just _ -> error $ "toCodegen: " ++ name ++ " not a Variable"
+          Nothing -> error $ "toCodegen: " ++ name ++ " not found"
       genDec n (ProcedureDef name params block) = undefined
       genDec n _ = return mempty
 
   genOp Equals = singleton EQUAL
-  genOp NEquals = StackMachineCode 4 [EQUAL,NOT,ONE,AND]
+  genOp NEquals = toCode [EQUAL,NOT,ONE,AND]
   genOp LEquals = singleton LESSEQ
   genOp Less = singleton LESS
-  genOp Greater = StackMachineCode 2 [SWAP,LESS]
-  genOp GEquals = StackMachineCode 2 [SWAP,LESSEQ]
+  genOp Greater = toCode [SWAP,LESS]
+  genOp GEquals = toCode [SWAP,LESSEQ]
   genOp Plus = singleton ADD
-  genOp Minus = StackMachineCode 2 [NEGATE,ADD]
+  genOp Minus = toCode [NEGATE,ADD]
   genOp Times = singleton MPY
   genOp Divide = singleton DIV
   genOp Negate = singleton NEGATE
@@ -104,9 +110,9 @@ instance Code StackMachineCode where
     entry <- findEntry name <$> get
     case entry of
       Just (VarEntry _ (Just addr)) -> pure (singleton $ LOAD_CON addr)
-      Just (VarEntry _ Nothing) -> error $ "codegen: address for " ++ name ++ " not set"
-      Just _ -> error $ "codegen: " ++ name ++ " not a variable"
-      Nothing -> error $ "codegen: " ++ name ++ " not found"
+      Just (VarEntry _ Nothing) -> error $ "toCodegen: address for " ++ name ++ " not set"
+      Just _ -> error $ "toCodegen: " ++ name ++ " not a variable"
+      Nothing -> error $ "toCodegen: " ++ name ++ " not found"
   genExpression (Narrow (TSub _ from to) expr) = do
     cexpr <- genExpression expr
     cfrom <- genExpression from
