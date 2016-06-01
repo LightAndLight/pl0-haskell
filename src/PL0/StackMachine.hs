@@ -194,14 +194,14 @@ interpreter = do
           if a == b then push 1 else push 0
           interpreter
         LESS -> do
-          a <- pop
           b <- pop
+          a <- pop
           if a < b then push 1 else push 0
           interpreter
         LESSEQ -> do
-          a <- pop
           b <- pop
-          push $ a + b
+          a <- pop
+          if a <= b then push 1 else push 0
           interpreter
         NOT -> do
           a <- pop
