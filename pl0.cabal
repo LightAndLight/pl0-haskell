@@ -34,6 +34,7 @@ library
                      , bytestring
                      , containers
                      , dlist
+                     , lens
                      , mtl
                      , transformers
                      , vector

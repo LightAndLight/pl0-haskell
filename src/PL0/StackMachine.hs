@@ -1,11 +1,14 @@
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module PL0.StackMachine where
 
 import           PL0.StackMachine.Instruction
 
+import Control.Applicative (liftA2)
+import Control.Lens
 import           Control.Monad.Except
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
@@ -16,7 +19,17 @@ import           Data.Bits
 import           Data.Vector.Mutable (IOVector)
 import qualified Data.Vector.Mutable as V
 
-data MachineState = MachineState { getFramePointer :: Int, getProgramCounter :: Int, getStack :: Stack }
+data Stack = Stack { _stackPointer :: Int, _stackData :: IOVector Int }
+
+data MachineState = MachineState { _framePointer :: Int, _programCounter :: Int, _stackState :: Stack }
+
+makeClassy ''Stack
+makeClassy ''MachineState
+
+instance HasStack MachineState where
+  stackPointer = stackState . stackPointer
+  stackData = stackState . stackData
+  stack = stackState
 
 data MachineError = ValueOutOfRange Int Int Int
                   | PCOutOfRange Int
@@ -39,38 +52,34 @@ newtype StackMachine a = StackMachine {
   MonadIO
   )
 
-data Stack = Stack { getStackPointer :: Int, getStackData :: IOVector Int }
-
 newStack :: MonadIO m => Int -> m Stack
 newStack size = Stack (-1) <$> liftIO (V.new size)
 
-push :: (MonadIO m, MonadState MachineState m, MonadError MachineError m) => Int -> m ()
+push :: (HasStack s, MonadIO m, MonadState s m, MonadError MachineError m) => Int -> m ()
 push a = do
-  (MachineState fp pc (Stack sp vect)) <- get
-  let sp' = sp + 1
-  if sp' >= V.length vect
+  stackPointer += 1
+  sp <- use stackPointer
+  sdata <- use stackData
+  if sp >= V.length sdata
     then throwError StackOverflow
-    else do
-      liftIO $ V.write vect sp' a
-      put $ MachineState fp pc (Stack sp' vect)
+    else liftIO $ V.write sdata sp a
 
-pop :: (MonadIO m, MonadError MachineError m, MonadState MachineState m) => m Int
+pop :: (HasStack s, MonadIO m, MonadError MachineError m, MonadState s m) => m Int
 pop = do
-  (MachineState fp pc (Stack sp vect)) <- get
+  sp <- use stackPointer
   if sp < 0
     then throwError StackUnderflow
     else do
-      a <- liftIO $ V.read vect sp
-      put $ MachineState fp pc (Stack (sp - 1) vect)
+      sdata <- use stackData
+      a <- liftIO $ V.read sdata sp
+      stackPointer -= 1
       return a
 
-peek :: (MonadIO m, MonadError MachineError m, MonadState MachineState m) => m Int
+peek :: (HasStack s, MonadIO m, MonadError MachineError m, MonadState s m) => m Int
 peek = do
-  (MachineState _ _ (Stack current vect)) <- get
-  liftIO $ V.read vect current
-
-incPC :: MonadState MachineState m => m ()
-incPC = modify $ \(MachineState fp pc st) -> MachineState fp (pc + 1) st
+  sp <- use stackPointer
+  sdata <- use stackData
+  liftIO $ V.read sdata sp
 
 runProgramFrom :: Int -> Int -> [Instruction] -> IO (Either MachineError Int)
 runProgramFrom pc stackSize program = do
@@ -80,47 +89,51 @@ runProgramFrom pc stackSize program = do
     . flip runReaderT (listArray (0,length program) program)
     . runStackMachine $ interpreter
 
-type MonadMachine m = (MonadState MachineState m, MonadReader Program m, MonadError MachineError m, MonadIO m)
+type MonadMachine s m = (MonadState s m, MonadReader Program m, MonadError MachineError m, MonadIO m)
 
-runOnMachine :: MonadMachine m => (Int -> Int -> Int) -> m ()
+runOnMachine :: (HasStack s, MonadMachine s m) => (Int -> Int -> Int) -> m ()
 runOnMachine f = do
   a <- pop
   b <- pop
   push $ f a b
 
-runOnMachineBool :: MonadMachine m => (Int -> Int -> Bool) -> m ()
+runOnMachineBool :: (HasStack s, MonadMachine s m) => (Int -> Int -> Bool) -> m ()
 runOnMachineBool f = do
   a <- pop
   b <- pop
   if f a b then push 1 else push 2
 
-interpreter :: MonadMachine m => m Int
+addTopFP :: (HasStack s, HasMachineState s, MonadMachine s m) => m Int
+addTopFP = liftA2 (+) (use framePointer) pop
+
+interpreter :: (HasStack s, HasMachineState s, MonadMachine s m) => m Int
 interpreter = do
-  (MachineState fp pc st) <- get
   program <- ask
+  pc <- use programCounter
+  fp <- use framePointer
   let (from,to) = bounds program
   if from > pc || pc > to
     then throwError $ PCOutOfRange pc
     else do
-      incPC
+      programCounter += 1
       case program ! pc of
         NO_OP -> interpreter
         BR -> do
           offset <- pop
-          modify $ \(MachineState fp pc st) -> MachineState fp (pc - offset) st
+          programCounter .= offset
           interpreter
         BR_FALSE -> do
           offset <- pop
           n <- pop
           case n of
-            0 -> modify $ \(MachineState fp pc st) -> MachineState fp (pc - offset) st
+            0 -> programCounter .= offset
             _ -> return ()
           interpreter
         COPY -> do
           size <- pop
           to <- pop
           from <- pop
-          st <- getStackData . getStack <$> get
+          st <- use stackData
           let copy n = do
                 aVal <- liftIO $ V.read st (from + n)
                 liftIO $ V.write st (to + n) aVal
@@ -132,18 +145,18 @@ interpreter = do
             then throwError $ AddressOutOfRange addr
             else do
               mstate <- get
-              push $ getFramePointer mstate
-              push $ getProgramCounter mstate
-              (MachineState _ _ st) <- get
-              put $ MachineState (getStackPointer st - 2) addr st
+              push $ mstate ^. framePointer
+              push $ mstate ^. programCounter
+              programCounter .= addr
+              stackPointer -= 2
               interpreter
         RETURN -> do
-          (MachineState fp pc st) <- get
-          put $ MachineState fp pc st { getStackPointer = fp + 3 }
+          stackPointer += 3
           pc' <- pop
           fp' <- pop
           pop
-          modify $ \(MachineState _ _ st') -> MachineState fp' pc' st'
+          programCounter .= pc
+          framePointer .= fp'
           interpreter
         ALLOC_STACK -> do
           n <- pop
@@ -215,62 +228,60 @@ interpreter = do
             then interpreter
             else throwError $ ValueOutOfRange value lower upper
         TO_GLOBAL -> do
-          mstate <- get
           addr <- pop
-          push $ addr + getFramePointer mstate
+          push $ addr + fp
           interpreter
         TO_LOCAL -> do
-          mstate <- get
+          fp <- use framePointer
           addr <- pop
-          push $ addr - getFramePointer mstate
+          push $ addr - fp
           interpreter
         LOAD_CON c -> push c >> interpreter
         LOAD_ABS -> do
           addr <- pop
-          (MachineState fp pc (Stack current vect)) <- get
-          if addr < 0 || V.length vect <= addr
+          sdata <- use stackData
+          if addr < 0 || V.length sdata <= addr
             then throwError $ AddressOutOfRange addr
             else do
-              value <- liftIO $ V.read vect addr
+              value <- liftIO $ V.read sdata addr
               push value
               interpreter
         STORE_FRAME -> do
-          offset <- pop
+          location <- addTopFP
           value <- pop
-          (MachineState fp pc (Stack current vect)) <- get
-          let location = fp + offset
-          if location < 0 || location > V.length vect
+          sdata <- use stackData
+          if location < 0 || location > V.length sdata
             then throwError $ AddressOutOfRange location
             else do
-              liftIO $ V.write vect location value
+              liftIO $ V.write sdata location value
               interpreter
         LOAD_FRAME -> do
-          offset <- pop
-          (MachineState fp pc (Stack current vect)) <- get
-          let location = fp + offset
-          if location < 0 || location >= V.length vect
+          sdata <- use stackData
+          location <- addTopFP
+          if location < 0 || location >= V.length sdata
             then throwError $ AddressOutOfRange location
             else do
-              value <- liftIO $ V.read vect location
+              value <- liftIO $ V.read sdata location
               push value
               interpreter
         ZERO -> push 0 >> interpreter
         ONE -> push 1 >> interpreter
         ALLOC_HEAP -> undefined
         LOAD_MULTI -> do
-          (MachineState fp _ (Stack _ vect)) <- get
           count <- pop
-          offset <- pop
-          let readOne n = liftIO (V.read vect $ fp + offset + n) >>= push
+          location <- addTopFP
+          sdata <- use stackData
+          let readOne n = liftIO (V.read sdata $ location + n) >>= push
           traverse readOne [0..count]
           interpreter
         STORE_MULTI -> do
-          (MachineState fp _ (Stack _ vect)) <- get
           count <- pop
           offset <- pop
+          sdata <- use stackData
+          fp <- use framePointer
           let store' n = do
                 value <- pop
-                liftIO $ V.write vect (fp + offset + n - 1) value
+                liftIO $ V.write sdata (fp + offset + n - 1) value
               store 0 = store' 0
               store n = store' n >> store (n - 1)
           store count
