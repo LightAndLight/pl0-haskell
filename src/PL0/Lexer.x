@@ -47,6 +47,8 @@ tokens :-
   "var"   { \s -> KW_VAR }
   "while" { \s -> KW_WHILE }
   "write" { \s -> KW_WRITE }
+  "false" { \s -> KW_FALSE }
+  "true" { \s -> KW_TRUE }
   $digit+ { NUMBER . read }
   $alpha [$alpha $digit]* { IDENTIFIER }
 
@@ -85,6 +87,8 @@ data Token = ASSIGN
            | KW_VAR
            | KW_WHILE
            | KW_WRITE
+           | KW_FALSE
+           | KW_TRUE
            | NUMBER Int
            | IDENTIFIER String
            | EOF

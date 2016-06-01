@@ -46,6 +46,8 @@ import PL0.SymbolTable
   var { KW_VAR }
   while { KW_WHILE }
   write { KW_WRITE }
+  false { KW_FALSE }
+  true { KW_TRUE }
   number { NUMBER $$ }
   identifier { IDENTIFIER $$ }
   eof { EOF }
@@ -147,7 +149,9 @@ RelOp : '=' { equalsOp }
       | '>=' { gequalsOp }
       | '>' { greaterOp }
 
-Exp : LeftTerm { $1 }
+Exp : false { UProxy (Const TBool 0) }
+    | true { UProxy (Const TBool 1) }
+    | LeftTerm { $1 }
     | LeftTerm PlusMinus Term { UOp $2 [$1,$3] }
 
 LeftTerm : Term { $1 }
