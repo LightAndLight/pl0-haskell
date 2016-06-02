@@ -52,7 +52,12 @@ instance Code StackMachineCode where
       _ -> return mempty
     return $ singleton READ <> check <> ce <> singleton STORE_FRAME
   genStatement (Write e) = liftA2 mappend (genExpression e) (pure $ singleton WRITE)
-  genStatement (While cond st) = undefined
+  genStatement (While cond st) = do
+    ccond <- genExpression cond
+    cst <- genStatement st
+    let ccond' = ccond <> toCode [LOAD_CON $ getSize cst + 2, BR_FALSE]
+    let cst' = cst <> toCode [LOAD_CON $ -(getSize ccond') - (getSize cst + 2), BR]
+    return $ ccond' <> cst'
   genStatement (If cond th el) = do
     ccond <- genExpression cond
     cthen <- genStatement th

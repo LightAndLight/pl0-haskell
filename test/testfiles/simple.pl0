@@ -5,5 +5,9 @@ var x : a;
 begin
   x := 1;
   y := 2;
-  if true then write (x - 1) else write (2 * y)
+  while y < 10 do
+    begin
+      write y;
+      y := y + 1
+    end
 end
