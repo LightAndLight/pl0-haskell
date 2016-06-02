@@ -1,12 +1,17 @@
 {
-module PL0.Lexer (Token(..), scanTokens) where
+module PL0.Lexer (
+  AlexPosn(..)
+  , Token(..)
+  , TokenType(..)
+  , scanTokens
+) where
 
 import qualified Data.ByteString.Lazy as B
 import           Data.ByteString.Lazy (ByteString)
 
 }
 
-%wrapper "basic"
+%wrapper "posn"
 
 $digit = 0-9
 $alpha = [a-zA-Z]
@@ -14,93 +19,103 @@ $alpha = [a-zA-Z]
 tokens :-
   $white+ ;
   "//".* ;
-  ":=" { \s -> ASSIGN }
-  ":"  { \s -> COLON }
-  ";"  { \s -> SEMICOLON }
-  ".." { \s -> RANGE }
-  "," { \s -> COMMA }
-  "(" { \s -> LPAREN }
-  ")"  { \s -> RPAREN }
-  "["  { \s -> LBRACKET }
-  "]"  { \s -> RBRACKET }
-  "="  { \s -> EQUALS }
-  "!=" { \s -> NEQUALS }
-  ">=" { \s -> GEQUALS }
-  "<=" { \s -> LEQUALS }
-  ">"  { \s -> GREATER }
-  "<"  { \s -> LESS }
-  "+"  { \s -> PLUS }
-  "-"  { \s -> MINUS }
-  "*"  { \s -> TIMES }
-  "/"  { \s -> DIVIDE }
-  "begin" { \s -> KW_BEGIN }
-  "call"  { \s -> KW_CALL }
-  "const" { \s -> KW_CONST }
-  "do"    { \s -> KW_DO }
-  "else"  { \s -> KW_ELSE }
-  "end"   { \s -> KW_END }
-  "if"    { \s -> KW_IF }
-  "procedure"  { \s -> KW_PROC }
-  "read"  { \s -> KW_READ }
-  "then"  { \s -> KW_THEN }
-  "type"  { \s -> KW_TYPE }
-  "var"   { \s -> KW_VAR }
-  "while" { \s -> KW_WHILE }
-  "write" { \s -> KW_WRITE }
-  "false" { \s -> KW_FALSE }
-  "true" { \s -> KW_TRUE }
-  $digit+ { NUMBER . read }
-  $alpha [$alpha $digit]* { IDENTIFIER }
+  ":=" { \pos s -> Token pos ASSIGN }
+  ":"  { \pos s -> Token pos COLON }
+  ";"  { \pos s -> Token pos SEMICOLON }
+  ".." { \pos s -> Token pos RANGE }
+  "," { \pos s -> Token pos COMMA }
+  "(" { \pos s -> Token pos LPAREN }
+  ")"  { \pos s -> Token pos RPAREN }
+  "["  { \pos s -> Token pos LBRACKET }
+  "]"  { \pos s -> Token pos RBRACKET }
+  "="  { \pos s -> Token pos EQUALS }
+  "!=" { \pos s -> Token pos NEQUALS }
+  ">=" { \pos s -> Token pos GEQUALS }
+  "<=" { \pos s -> Token pos LEQUALS }
+  ">"  { \pos s -> Token pos GREATER }
+  "<"  { \pos s -> Token pos LESS }
+  "+"  { \pos s -> Token pos PLUS }
+  "-"  { \pos s -> Token pos MINUS }
+  "*"  { \pos s -> Token pos TIMES }
+  "/"  { \pos s -> Token pos DIVIDE }
+  "begin" { \pos s -> Token pos KW_BEGIN }
+  "call"  { \pos s -> Token pos KW_CALL }
+  "const" { \pos s -> Token pos KW_CONST }
+  "do"    { \pos s -> Token pos KW_DO }
+  "else"  { \pos s -> Token pos KW_ELSE }
+  "end"   { \pos s -> Token pos KW_END }
+  "if"    { \pos s -> Token pos KW_IF }
+  "procedure"  { \pos s -> Token pos KW_PROC }
+  "read"  { \pos s -> Token pos KW_READ }
+  "then"  { \pos s -> Token pos KW_THEN }
+  "type"  { \pos s -> Token pos KW_TYPE }
+  "var"   { \pos s -> Token pos KW_VAR }
+  "while" { \pos s -> Token pos KW_WHILE }
+  "write" { \pos s -> Token pos KW_WRITE }
+  "false" { \pos s -> Token pos KW_FALSE }
+  "true" { \pos s -> Token pos KW_TRUE }
+  $digit+ { \pos s -> Token pos (NUMBER $ read s) }
+  $alpha [$alpha $digit]* { \pos s -> Token pos (IDENTIFIER s) }
 
 {
 
-data Token = ASSIGN
-           | COLON
-           | SEMICOLON
-           | RANGE
-           | COMMA
-           | LPAREN
-           | RPAREN
-           | LBRACKET
-           | RBRACKET
-           | EQUALS
-           | NEQUALS
-           | GEQUALS
-           | LEQUALS
-           | GREATER
-           | LESS
-           | PLUS
-           | MINUS
-           | TIMES
-           | DIVIDE
-           | KW_BEGIN
-           | KW_CALL
-           | KW_CONST
-           | KW_DO
-           | KW_ELSE
-           | KW_END
-           | KW_IF
-           | KW_PROC
-           | KW_READ
-           | KW_THEN
-           | KW_TYPE
-           | KW_VAR
-           | KW_WHILE
-           | KW_WRITE
-           | KW_FALSE
-           | KW_TRUE
-           | NUMBER Int
-           | IDENTIFIER String
-           | EOF
-           deriving (Eq,Show)
+data Token = Token AlexPosn TokenType
+
+data TokenType = ASSIGN
+               | COLON
+               | SEMICOLON
+               | RANGE
+               | COMMA
+               | LPAREN
+               | RPAREN
+               | LBRACKET
+               | RBRACKET
+               | EQUALS
+               | NEQUALS
+               | GEQUALS
+               | LEQUALS
+               | GREATER
+               | LESS
+               | PLUS
+               | MINUS
+               | TIMES
+               | DIVIDE
+               | KW_BEGIN
+               | KW_CALL
+               | KW_CONST
+               | KW_DO
+               | KW_ELSE
+               | KW_END
+               | KW_IF
+               | KW_PROC
+               | KW_READ
+               | KW_THEN
+               | KW_TYPE
+               | KW_VAR
+               | KW_WHILE
+               | KW_WRITE
+               | KW_FALSE
+               | KW_TRUE
+               | NUMBER Int
+               | IDENTIFIER String
+               | EOF
+               deriving (Eq,Show)
 
 scanTokens :: String -> Either String [Token]
-scanTokens str = go ('\n',[],str)
+scanTokens str = go (alexStartPos,'\n',[],str)
   where
-    go inp@(_,_bs,str) = case alexScan inp 0 of
-      AlexEOF -> Right [EOF]
-      AlexError _ -> Left "lexical error"
+    go inp@(pos,_,_bs,str) = case alexScan inp 0 of
+      AlexEOF -> Right [Token pos EOF]
+      AlexError ((AlexPn _ line col),c,_,_) -> Left $ concat [
+        "lexical error at line "
+        , show line
+        , ", column "
+        , show (col - 1)
+        , ": unexpected '"
+        , pure c
+        , "'"
+        ]
       AlexSkip  inp' len     -> go inp'
-      AlexToken inp' len act -> fmap (act (take len str) :) (go inp')
+      AlexToken inp' len act -> fmap ((act pos $ take len str) :) (go inp')
 
 }

@@ -13,44 +13,44 @@ import PL0.SymbolTable
 %error { parseError }
 
 %token
-  ':=' { ASSIGN }
-  ':' { COLON }
-  ';' { SEMICOLON }
-  '..' { RANGE }
-  ',' { COMMA }
-  '(' { LPAREN }
-  ')' { RPAREN }
-  '[' { LBRACKET }
-  ']' { RBRACKET }
-  '=' { EQUALS }
-  '!=' { NEQUALS }
-  '>=' { GEQUALS }
-  '<=' { LEQUALS }
-  '<' { LESS }
-  '>' { GREATER }
-  '+' { PLUS }
-  '-' { MINUS }
-  '*' { TIMES }
-  '/' { DIVIDE }
-  begin { KW_BEGIN }
-  call { KW_CALL }
-  const { KW_CONST }
-  do { KW_DO }
-  else { KW_ELSE }
-  end { KW_END }
-  if { KW_IF }
-  then { KW_THEN }
-  proc { KW_PROC }
-  read { KW_READ }
-  type { KW_TYPE }
-  var { KW_VAR }
-  while { KW_WHILE }
-  write { KW_WRITE }
-  false { KW_FALSE }
-  true { KW_TRUE }
-  number { NUMBER $$ }
-  identifier { IDENTIFIER $$ }
-  eof { EOF }
+  ':=' { Token _ ASSIGN }
+  ':' { Token _ COLON }
+  ';' { Token _ SEMICOLON }
+  '..' { Token _ RANGE }
+  ',' { Token _ COMMA }
+  '(' { Token _ LPAREN }
+  ')' { Token _ RPAREN }
+  '[' { Token _ LBRACKET }
+  ']' { Token _ RBRACKET }
+  '=' { Token _ EQUALS }
+  '!=' { Token _ NEQUALS }
+  '>=' { Token _ GEQUALS }
+  '<=' { Token _ LEQUALS }
+  '<' { Token _ LESS }
+  '>' { Token _ GREATER }
+  '+' { Token _ PLUS }
+  '-' { Token _ MINUS }
+  '*' { Token _ TIMES }
+  '/' { Token _ DIVIDE }
+  begin { Token _ KW_BEGIN }
+  call { Token _ KW_CALL }
+  const { Token _ KW_CONST }
+  do { Token _ KW_DO }
+  else { Token _ KW_ELSE }
+  end { Token _ KW_END }
+  if { Token _ KW_IF }
+  then { Token _ KW_THEN }
+  proc { Token _ KW_PROC }
+  read { Token _ KW_READ }
+  type { Token _ KW_TYPE }
+  var { Token _ KW_VAR }
+  while { Token _ KW_WHILE }
+  write { Token _ KW_WRITE }
+  false { Token _ KW_FALSE }
+  true { Token _ KW_TRUE }
+  number { Token _ (NUMBER $$) }
+  identifier { Token _ (IDENTIFIER $$) }
+  eof { Token _ EOF }
 
 %%
 
@@ -174,5 +174,12 @@ Factor : '(' Condition ')' { $2 }
 LValue : identifier { Identifier $1 }
 
 {
-parseError tokens = Left "parse error"
+parseError ((Token (AlexPn _ line col) tok):ts) = Left $ concat [
+  "parse error at line "
+  , show line
+  , ", column "
+  , show (col - 1)
+  , ": unexpected "
+  , show tok
+  ]
 }

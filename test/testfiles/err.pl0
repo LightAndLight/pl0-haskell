@@ -8,6 +8,7 @@ var b: boolean; // boolean variable
 procedure sum() =
   var i: S; // local variable to sum
 begin // sum
+!
   i := 0;
   res := 0;
   while i != x do
