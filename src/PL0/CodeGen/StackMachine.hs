@@ -17,6 +17,7 @@ import           Control.Applicative          (liftA2)
 import           Control.Monad.Except
 import           Control.Monad.State
 import           Data.Foldable
+import           Data.ITree.Zipper
 import           Data.Monoid
 
 data StackMachineCode = StackMachineCode { getSize :: Int, instructions :: [Instruction] }
@@ -42,6 +43,7 @@ instance Code StackMachineCode where
     etoCode <- genExpression expr
     ltoCode <- genExpression lvalue
     return $ etoCode <> ltoCode <> singleton STORE_FRAME
+
   genStatement (Read e) = do
     ce <- genExpression e
     check <- case getType (dereference e) of
@@ -51,13 +53,16 @@ instance Code StackMachineCode where
         return $ cfrom <> cto <> singleton BOUND
       _ -> return mempty
     return $ singleton READ <> check <> ce <> singleton STORE_FRAME
+
   genStatement (Write e) = liftA2 mappend (genExpression e) (pure $ singleton WRITE)
+
   genStatement (While cond st) = do
     ccond <- genExpression cond
     cst <- genStatement st
     let ccond' = ccond <> toCode [LOAD_CON $ getSize cst + 2, BR_FALSE]
     let cst' = cst <> toCode [LOAD_CON $ -(getSize ccond') - (getSize cst + 2), BR]
     return $ ccond' <> cst'
+
   genStatement (If cond th el) = do
     ccond <- genExpression cond
     cthen <- genStatement th
@@ -68,7 +73,16 @@ instance Code StackMachineCode where
       <> cthen'
       <> celse
 
-  genStatement (CallStatement name args) = undefined
+  genStatement (CallStatement name args) = do
+    entry <- findEntry name <$> get
+    case entry of
+      Just (ProcEntry params (Just loc)) -> do
+        cargs <- fold <$> traverse genExpression (reverse args)
+        modify $ down name
+        return $ cargs <> toCode [ZERO, LOAD_FRAME, LOAD_CON loc, CALL]
+      Just (ProcEntry _ Nothing) -> error $ "codegen: procedure " ++ name ++ " missing address"
+      Just _ -> error $ "codegen: entry \"" ++ name ++ "\" not a procedure"
+      Nothing -> error $ "codegen: entry \"" ++ name ++ "\" not found"
   genStatement (Compound sts) = fold <$> traverse genStatement sts
   genStatement SError = throwError "called genStatement on SError"
 
@@ -83,18 +97,18 @@ instance Code StackMachineCode where
           Just (ConstEntry ty (Left expr)) -> do
             modify (addEntry name (ConstEntry ty (Right $ n + 3)))
             liftA2 mappend (genExpression expr) (pure $ toCode [LOAD_CON (n + 3), STORE_FRAME])
-          Just (ConstEntry ty _) -> error $ "toCodegen: " ++ name ++ " (const) already has an address"
-          Just _ -> error $ "toCodegen: " ++ name ++ " not a constant"
-          Nothing -> error $ "toCodegen: " ++ name ++ " not found"
+          Just (ConstEntry ty _) -> error $ "codegen: " ++ name ++ " (const) already has an address"
+          Just _ -> error $ "codegen: " ++ name ++ " not a constant"
+          Nothing -> error $ "codegen: " ++ name ++ " not found"
       genDec n (VarDecl name _) = do
         entry <- findEntry name <$> get
         case entry of
           Just (VarEntry ty Nothing) -> do
             modify (addEntry name (VarEntry ty (Just $ n + 3)))
             return mempty
-          Just (VarEntry ty _) -> error $ "toCodegen: " ++ name ++ " (var) already has an address"
-          Just _ -> error $ "toCodegen: " ++ name ++ " not a Variable"
-          Nothing -> error $ "toCodegen: " ++ name ++ " not found"
+          Just (VarEntry ty _) -> error $ "codegen: " ++ name ++ " (var) already has an address"
+          Just _ -> error $ "codegen: " ++ name ++ " not a Variable"
+          Nothing -> error $ "codegen: " ++ name ++ " not found"
       genDec n (ProcedureDef name params block) = undefined
       genDec n _ = return mempty
 
@@ -115,9 +129,9 @@ instance Code StackMachineCode where
     entry <- findEntry name <$> get
     case entry of
       Just (VarEntry _ (Just addr)) -> pure (singleton $ LOAD_CON addr)
-      Just (VarEntry _ Nothing) -> error $ "toCodegen: address for " ++ name ++ " not set"
-      Just _ -> error $ "toCodegen: " ++ name ++ " not a variable"
-      Nothing -> error $ "toCodegen: " ++ name ++ " not found"
+      Just (VarEntry _ Nothing) -> error $ "codegen: address for " ++ name ++ " not set"
+      Just _ -> error $ "codegen: " ++ name ++ " not a variable"
+      Nothing -> error $ "codegen: " ++ name ++ " not found"
   genExpression (Narrow (TSub _ from to) expr) = do
     cexpr <- genExpression expr
     cfrom <- genExpression from
