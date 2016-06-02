@@ -145,10 +145,11 @@ interpreter = do
             then throwError $ AddressOutOfRange addr
             else do
               mstate <- get
+              let link = mstate ^. stackPointer
               push $ mstate ^. framePointer
               push $ mstate ^. programCounter
+              framePointer .= link
               programCounter .= addr
-              stackPointer -= 2
               interpreter
         RETURN -> do
           stackPointer += 3
