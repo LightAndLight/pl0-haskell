@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TemplateHaskell  #-}
 
 module PL0.CodeGen.StackMachine (
   instructions
@@ -14,13 +15,29 @@ import           PL0.SymbolTable
 import           PL0.SymbolTable.Scope
 
 import           Control.Applicative          (liftA2)
+import           Control.Lens                 hiding (Const)
 import           Control.Monad.Except
 import           Control.Monad.State
 import           Data.Foldable
-import           Data.ITree.Zipper
 import           Data.Monoid
 
-data StackMachineCode = StackMachineCode { getSize :: Int, instructions :: [Instruction] }
+data StackMachineCode = StackMachineCode {
+  _size           :: Int
+  , _instructions :: [Instruction]
+  }
+
+makeLenses ''StackMachineCode
+
+data CodeGenState = CodeGenState {
+  _procedures     :: [StackMachineCode]
+  , _mainCode     :: StackMachineCode
+  , _programScope :: Scope
+  }
+
+makeLenses ''CodeGenState
+
+instance HasScope CodeGenState where
+  scope = programScope
 
 instance Monoid StackMachineCode where
   mempty = StackMachineCode 0 []
@@ -59,26 +76,26 @@ instance Code StackMachineCode where
   genStatement (While cond st) = do
     ccond <- genExpression cond
     cst <- genStatement st
-    let ccond' = ccond <> toCode [LOAD_CON $ getSize cst + 2, BR_FALSE]
-    let cst' = cst <> toCode [LOAD_CON $ -(getSize ccond') - (getSize cst + 2), BR]
+    let ccond' = ccond <> toCode [LOAD_CON $ cst ^. size + 2, BR_FALSE]
+    let cst' = cst <> toCode [LOAD_CON $ -(ccond' ^. size) - (cst ^. size + 2), BR]
     return $ ccond' <> cst'
 
   genStatement (If cond th el) = do
     ccond <- genExpression cond
     cthen <- genStatement th
     celse <- genStatement el
-    let cthen' = cthen <> toCode [LOAD_CON $ getSize celse, BR]
+    let cthen' = cthen <> toCode [LOAD_CON $ celse ^. size, BR]
     return $ ccond
-      <> toCode [LOAD_CON $ getSize cthen', BR_FALSE]
+      <> toCode [LOAD_CON $ cthen' ^. size, BR_FALSE]
       <> cthen'
       <> celse
 
   genStatement (CallStatement name args) = do
-    entry <- findEntry name <$> get
+    entry <- findEntry name <$> use scope
     case entry of
       Just (ProcEntry params (Just loc)) -> do
         cargs <- fold <$> traverse genExpression (reverse args)
-        modify $ down name
+        scope %= enterScope name
         return $ cargs <> toCode [ZERO, LOAD_FRAME, LOAD_CON loc, CALL]
       Just (ProcEntry _ Nothing) -> error $ "codegen: procedure " ++ name ++ " missing address"
       Just _ -> error $ "codegen: entry \"" ++ name ++ "\" not a procedure"
@@ -92,19 +109,19 @@ instance Code StackMachineCode where
       genDecs n (d:ds) = liftA2 mappend (genDec n d) (genDecs (n + 1) ds)
       genDecs n [] = return mempty
       genDec n (ConstDef name e) = do
-        entry <- findEntry name <$> get
+        entry <- findEntry name <$> use scope
         case entry of
           Just (ConstEntry ty (Left expr)) -> do
-            modify (addEntry name (ConstEntry ty (Right $ n + 3)))
+            scope %= addEntry name (ConstEntry ty (Right $ n + 3))
             liftA2 mappend (genExpression expr) (pure $ toCode [LOAD_CON (n + 3), STORE_FRAME])
           Just (ConstEntry ty _) -> error $ "codegen: " ++ name ++ " (const) already has an address"
           Just _ -> error $ "codegen: " ++ name ++ " not a constant"
           Nothing -> error $ "codegen: " ++ name ++ " not found"
       genDec n (VarDecl name _) = do
-        entry <- findEntry name <$> get
+        entry <- findEntry name <$> use scope
         case entry of
           Just (VarEntry ty Nothing) -> do
-            modify (addEntry name (VarEntry ty (Just $ n + 3)))
+            scope %= addEntry name (VarEntry ty (Just $ n + 3))
             return mempty
           Just (VarEntry ty _) -> error $ "codegen: " ++ name ++ " (var) already has an address"
           Just _ -> error $ "codegen: " ++ name ++ " not a Variable"
@@ -126,7 +143,7 @@ instance Code StackMachineCode where
 
   genExpression (DecidedOp op _ args) = liftA2 mappend (fold <$> traverse genExpression args) (pure $ genOp op)
   genExpression (Variable _ name) = do
-    entry <- findEntry name <$> get
+    entry <- findEntry name <$> use scope
     case entry of
       Just (VarEntry _ (Just addr)) -> pure (singleton $ LOAD_CON addr)
       Just (VarEntry _ Nothing) -> error $ "codegen: address for " ++ name ++ " not set"
