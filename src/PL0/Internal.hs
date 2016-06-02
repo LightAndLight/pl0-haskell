@@ -121,26 +121,22 @@ emptySymbolTable = M.fromList [
   , ("boolean",TypeEntry TBool)
   ]
 
-type Scope = ITreeZipper String (Int,SymbolTable)
+newtype Scope = Scope { unScope :: ITreeZipper String SymbolTable }
 
 topLevelScope :: Scope
-topLevelScope = zipITree $ itree (0,emptySymbolTable) M.empty
-
-getLevel :: Scope -> Int
-getLevel = fst . extractValue
+topLevelScope = Scope . zipITree $ itree emptySymbolTable M.empty
 
 extendScope :: String -> Scope -> Scope
-extendScope str scope = let level = getLevel scope
-  in down str $ update (setLeaf str (level + 1,M.empty)) scope
+extendScope str (Scope sc) = Scope . down str $ update (setLeaf str M.empty) sc
 
 addEntry :: String -> SymEntry -> Scope -> Scope
-addEntry name entry = update (fmap $ fmap (M.insert name entry))
+addEntry name entry (Scope sc) = Scope $ update (fmap $ M.insert name entry) sc
 
 findEntry :: String -> Scope -> Maybe SymEntry
-findEntry name scope
-  | isTop scope = result
+findEntry name (Scope sc)
+  | isTop sc = result
   | otherwise = case result of
-    Nothing -> findEntry name $ up scope
+    Nothing -> findEntry name (Scope $ up sc)
     s       -> s
   where
-    result = M.lookup name . snd $ extractValue scope
+    result = M.lookup name $ extractValue sc
