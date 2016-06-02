@@ -1,8 +1,9 @@
 module PL0.SymbolTable.Scope (
   Scope
   , topLevelScope
-  , getLevel
   , extendScope
+  , enterScope
+  , leaveScope
   , addEntry
   , findEntry
 ) where

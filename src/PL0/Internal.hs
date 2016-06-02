@@ -7,7 +7,8 @@ module PL0.Internal where
 import Control.Monad.Except
 import Control.Monad.State
 import Data.ITree
-import Data.ITree.Zipper
+import Data.ITree.Zipper (ITreeZipper)
+import qualified Data.ITree.Zipper as Z
 import           Data.Map      (Map)
 import qualified Data.Map      as M
 
@@ -124,19 +125,25 @@ emptySymbolTable = M.fromList [
 newtype Scope = Scope { unScope :: ITreeZipper String SymbolTable }
 
 topLevelScope :: Scope
-topLevelScope = Scope . zipITree $ itree emptySymbolTable M.empty
+topLevelScope = Scope . Z.zipITree $ itree emptySymbolTable M.empty
 
 extendScope :: String -> Scope -> Scope
-extendScope str (Scope sc) = Scope . down str $ update (setLeaf str M.empty) sc
+extendScope str (Scope sc) = Scope . Z.down str $ Z.update (setLeaf str M.empty) sc
 
 addEntry :: String -> SymEntry -> Scope -> Scope
-addEntry name entry (Scope sc) = Scope $ update (fmap $ M.insert name entry) sc
+addEntry name entry (Scope sc) = Scope $ Z.update (fmap $ M.insert name entry) sc
 
 findEntry :: String -> Scope -> Maybe SymEntry
 findEntry name (Scope sc)
-  | isTop sc = result
+  | Z.isTop sc = result
   | otherwise = case result of
-    Nothing -> findEntry name (Scope $ up sc)
+    Nothing -> findEntry name (Scope $ Z.up sc)
     s       -> s
   where
-    result = M.lookup name $ extractValue sc
+    result = M.lookup name $ Z.extractValue sc
+
+enterScope :: String -> Scope -> Scope
+enterScope name (Scope sc) = Scope $ Z.down name sc
+
+leaveScope :: Scope -> Scope
+leaveScope (Scope sc) = Scope $ Z.up sc
