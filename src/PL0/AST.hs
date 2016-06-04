@@ -10,6 +10,7 @@ import           PL0.AST.Class
 import           PL0.SymbolTable
 import           PL0.SymbolTable.Scope
 
+import           Control.Lens
 import           Control.Monad.Except
 import           Control.Monad.State
 import           Data.Foldable
@@ -50,7 +51,7 @@ data UnresolvedType where
 
 instance Type UnresolvedType where
   resolve (TId name) = do
-    scope <- get
+    scope <- use scope
     case findEntry name scope of
       Just (TypeEntry ty) -> resolve ty
       Just _ -> throwError "expected type"
@@ -81,7 +82,7 @@ instance Expression Exp where
   checkExpression (UOp o exprs) = traverse checkExpression exprs >>= decide o
   checkExpression (UProxy e) = return e
   checkExpression (Identifier name) = do
-    scope <- get
+    scope <- use scope
     case findEntry name scope of
       Just (ConstEntry ty (Left expr)) -> do
         ty' <- resolve ty
