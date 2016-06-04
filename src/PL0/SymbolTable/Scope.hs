@@ -1,11 +1,13 @@
 module PL0.SymbolTable.Scope (
-  Scope
+  HasScope(..)
+  , Scope
   , topLevelScope
   , extendScope
   , enterScope
   , leaveScope
   , addEntry
   , findEntry
+  , getTable
 ) where
 
 import           PL0.Internal
