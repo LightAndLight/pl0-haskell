@@ -4,6 +4,7 @@
 
 module PL0.Internal where
 
+import           Control.Lens (Lens')
 import Control.Monad.Except
 import Control.Monad.State
 import Data.ITree
@@ -12,11 +13,12 @@ import qualified Data.ITree.Zipper as Z
 import           Data.Map      (Map)
 import qualified Data.Map      as M
 
+
 deriving instance Show TypedExp
 deriving instance Show ResolvedType
 
 class Expression e where
-  checkExpression :: (MonadError String m, MonadState Scope m) => e -> m TypedExp
+  checkExpression :: (HasScope s, MonadError String m, MonadState s m) => e -> m TypedExp
 
 class Expression a => ResolvedExpression a where
   getType :: a -> ResolvedType
@@ -24,13 +26,13 @@ class Expression a => ResolvedExpression a where
   dereference :: a -> a
 
 class Type t where
-  resolve :: (MonadState Scope m, MonadError String m) => t -> m ResolvedType
+  resolve :: (HasScope s, MonadState s m, MonadError String m) => t -> m ResolvedType
 
 class Type t => Resolved t where
   coerceTo :: MonadError String m => t -> t -> m t
 
 class Operation o where
-  decide :: (MonadError String m, MonadState Scope m) => o -> [TypedExp] -> m TypedExp
+  decide :: (HasScope s, MonadError String m, MonadState s m) => o -> [TypedExp] -> m TypedExp
 
 data TFunction = TFunction [ResolvedType] ResolvedType
   deriving Show
@@ -38,7 +40,7 @@ data TFunction = TFunction [ResolvedType] ResolvedType
 instance Type TFunction where
   resolve (TFunction args ret) = return ret
 
-checkArgs :: (MonadState Scope m, MonadError String m, ResolvedExpression ex, Resolved t) => [t] -> [ex] -> m [TypedExp]
+checkArgs :: (HasScope s, MonadState s m, MonadError String m, ResolvedExpression ex, Resolved t) => [t] -> [ex] -> m [TypedExp]
 checkArgs [] [] = return []
 checkArgs [] es = throwError "not enough arguments"
 checkArgs ts [] = throwError "too many arguments"
@@ -124,6 +126,12 @@ emptySymbolTable = M.fromList [
 
 newtype Scope = Scope { unScope :: ITreeZipper String SymbolTable }
 
+class HasScope s where
+  scope :: Lens' s Scope
+
+instance HasScope Scope where
+  scope = id
+
 topLevelScope :: Scope
 topLevelScope = Scope . Z.zipITree $ itree emptySymbolTable M.empty
 
@@ -147,3 +155,6 @@ enterScope name (Scope sc) = Scope $ Z.down name sc
 
 leaveScope :: Scope -> Scope
 leaveScope (Scope sc) = Scope $ Z.up sc
+
+getTable :: Scope -> SymbolTable
+getTable (Scope sc) = Z.extractValue sc
