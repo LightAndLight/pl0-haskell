@@ -1,5 +1,6 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TemplateHaskell  #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell       #-}
 
 module PL0.CodeGen.StackMachine (
   instructions
@@ -24,20 +25,9 @@ import           Data.Monoid
 data StackMachineCode = StackMachineCode {
   _size           :: Int
   , _instructions :: [Instruction]
-  }
+  } deriving Show
 
 makeLenses ''StackMachineCode
-
-data CodeGenState = CodeGenState {
-  _procedures     :: [StackMachineCode]
-  , _mainCode     :: StackMachineCode
-  , _programScope :: Scope
-  }
-
-makeLenses ''CodeGenState
-
-instance HasScope CodeGenState where
-  scope = programScope
 
 instance Monoid StackMachineCode where
   mempty = StackMachineCode 0 []
@@ -50,7 +40,12 @@ singleton :: Instruction -> StackMachineCode
 singleton a = toCode [a]
 
 instance Code StackMachineCode where
-  generate (Tree block) = (toCode [ZERO, ZERO, ZERO] <>) <$> liftA2 mappend (genBlock block) (pure . toCode $ [ZERO,STOP])
+  generate (Tree block) = do
+    mainCode .= toCode [ZERO, ZERO, ZERO]
+    cblock <- genBlock block
+    mainCode %= flip mappend cblock
+    mainCode %= flip mappend (toCode [ZERO,STOP])
+    use mainCode
 
   genBlock (Block decs st) = liftA2 mappend (genDeclarations decs) (genStatement st)
 
