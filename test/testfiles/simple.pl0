@@ -1,13 +1,9 @@
-type a = [1..4];
-var x : a;
-    y : int;
-    z : int;
+procedure a() =
 begin
-  x := 1;
-  y := 2;
-  while y < 10 do
-    begin
-      write y;
-      y := y + 1
-    end
+  write 2
+end;
+
+begin
+  call a();
+  call a()
 end
