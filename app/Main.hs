@@ -25,5 +25,5 @@ main = do
              >=> checkProgram
              >=> generate
       case flip evalState initialState . runExceptT . full $ content of
-        Right program' -> runProgramFrom 0 1000 (program' ^. instructions) >>= print
+        Right (Program entry code) -> runProgramFrom entry 1000 (code ^. instructions) >>= print
         Left err -> print err
