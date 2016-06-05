@@ -3,7 +3,9 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module PL0.StackMachine where
+module PL0.StackMachine (
+  runProgramFrom
+) where
 
 import           PL0.StackMachine.Instruction
 
@@ -152,11 +154,12 @@ interpreter = do
               programCounter .= addr
               interpreter
         RETURN -> do
-          stackPointer += 3
+          fp <- use framePointer
+          stackPointer .= fp + 2
           pc' <- pop
           fp' <- pop
           pop
-          programCounter .= pc
+          programCounter .= pc'
           framePointer .= fp'
           interpreter
         ALLOC_STACK -> do
