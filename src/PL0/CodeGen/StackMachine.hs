@@ -147,8 +147,10 @@ instance Code StackMachineCode where
       Just (ProcEntry tys Nothing) -> do
         pos <- use $ mainCode . size
         scope %= addEntry name (ProcEntry tys (Just pos))
+        scope %= enterScope name
         genBlock block
         mainCode <>= singleton RETURN
+        scope %= leaveScope
       Just (ProcEntry _ _) -> error $ "codegen: " ++ name ++ " (procedure) already has an address"
       Just _ -> error $ "codegen: " ++ name ++ " not a procedure"
       Nothing -> error $ "codegen: " ++ name ++ " not found"

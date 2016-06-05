@@ -1,6 +1,7 @@
 procedure a() =
+const b = 2;
 begin
-  write 2
+  write b
 end;
 
 begin
