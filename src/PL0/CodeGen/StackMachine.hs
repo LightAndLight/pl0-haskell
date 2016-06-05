@@ -1,9 +1,11 @@
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TypeFamilies          #-}
 
 module PL0.CodeGen.StackMachine (
-  instructions
+  Program(..)
+  , instructions
   , generate
 ) where
 
@@ -40,14 +42,23 @@ singleton :: Instruction -> StackMachineCode
 singleton a = toCode [a]
 
 instance Code StackMachineCode where
-  generate (Tree block) = do
-    mainCode .= toCode [ZERO, ZERO, ZERO]
-    cblock <- genBlock block
-    mainCode %= flip mappend cblock
+  data Program StackMachineCode = Program { entry :: Int, code :: StackMachineCode }
+  generate (Tree (Block decs st)) = do
+    genDeclarations decs
+    genProcedures decs
+    entry <- use $ mainCode . size
+    cst <- genStatement st
+    mainCode %= flip mappend cst
     mainCode %= flip mappend (toCode [ZERO,STOP])
-    use mainCode
+    code <- use mainCode
+    return $ Program entry code
 
-  genBlock (Block decs st) = liftA2 mappend (genDeclarations decs) (genStatement st)
+  genBlock (Block decs st) = do
+    procedures .= []
+    genDeclarations decs
+    genProcedures decs
+    cst <- genStatement st
+    mainCode %= flip mappend cst
 
   genAlloc n = toCode [LOAD_CON n, ALLOC_STACK]
 
@@ -98,31 +109,51 @@ instance Code StackMachineCode where
   genStatement (Compound sts) = fold <$> traverse genStatement sts
   genStatement SError = throwError "called genStatement on SError"
 
-  genDeclarations [] = return mempty
-  genDeclarations decs = mappend (genAlloc $ length decs) <$> genDecs 0 decs
+  genDeclarations = genDecs 0
     where
-      genDecs n (d:ds) = liftA2 mappend (genDec n d) (genDecs (n + 1) ds)
-      genDecs n [] = return mempty
-      genDec n (ConstDef name e) = do
+      genDecs n [] = return ()
+      genDecs n (ConstDef name e:ds) = do
         entry <- findEntry name <$> use scope
         case entry of
           Just (ConstEntry ty (Left expr)) -> do
             scope %= addEntry name (ConstEntry ty (Right $ n + 3))
-            liftA2 mappend (genExpression expr) (pure $ toCode [LOAD_CON (n + 3), STORE_FRAME])
+            mainCode %= flip mappend (genAlloc 1)
+            cexpr <- genExpression expr
+            mainCode %= flip mappend cexpr
+            mainCode %= flip mappend (toCode [LOAD_CON (n + 3), STORE_FRAME])
           Just (ConstEntry ty _) -> error $ "codegen: " ++ name ++ " (const) already has an address"
           Just _ -> error $ "codegen: " ++ name ++ " not a constant"
           Nothing -> error $ "codegen: " ++ name ++ " not found"
-      genDec n (VarDecl name _) = do
+        genDecs (n + 1) ds
+      genDecs n (VarDecl name _:ds) = do
         entry <- findEntry name <$> use scope
         case entry of
           Just (VarEntry ty Nothing) -> do
             scope %= addEntry name (VarEntry ty (Just $ n + 3))
-            return mempty
+            mainCode %= flip mappend (genAlloc 1)
           Just (VarEntry ty _) -> error $ "codegen: " ++ name ++ " (var) already has an address"
           Just _ -> error $ "codegen: " ++ name ++ " not a Variable"
           Nothing -> error $ "codegen: " ++ name ++ " not found"
-      genDec n (ProcedureDef name params block) = undefined
-      genDec n _ = return mempty
+        genDecs (n + 1) ds
+      genDecs n (p@ProcedureDef{}:ds) = do
+        procedures <>= [p]
+        genDecs n ds
+      genDecs n (d:ds) = genDecs n ds
+
+  genProcedures [] = return ()
+  genProcedures (ProcedureDef name params block:ds) = do
+    entry <- findEntry name <$> use scope
+    case entry of
+      Just (ProcEntry tys Nothing) -> do
+        pos <- use $ mainCode . size
+        scope %= addEntry name (ProcEntry tys (Just pos))
+        genBlock block
+        mainCode <>= singleton RETURN
+      Just (ProcEntry _ _) -> error $ "codegen: " ++ name ++ " (procedure) already has an address"
+      Just _ -> error $ "codegen: " ++ name ++ " not a procedure"
+      Nothing -> error $ "codegen: " ++ name ++ " not found"
+    genProcedures ds
+  genProcedures (d:ds) = genProcedures ds
 
   genOp Equals = singleton EQUAL
   genOp NEquals = toCode [EQUAL,NOT,ONE,AND]
