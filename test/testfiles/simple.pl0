@@ -1,10 +1,12 @@
-procedure a() =
-const b = 2;
+procedure a(b : int, c : int) =
 begin
-  write b
+  write (b + c)
 end;
 
+var b : int;
+    c : int;
 begin
-  call a();
-  call a()
+  read b;
+  read c;
+  call a(6,5)
 end

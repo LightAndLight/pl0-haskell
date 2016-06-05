@@ -30,6 +30,7 @@ class Monoid c => Code c where
   genBlock :: MonadCode s m c => Block TypedExp -> m ()
   genStatement :: MonadCode s m c => Statement TypedExp -> m c
   genDeclarations :: MonadCode s m c => [Declaration TypedExp] -> m ()
+  genArgs :: MonadCode s m c => [Declaration TypedExp] -> m ()
   genProcedures :: MonadCode s m c => [Declaration TypedExp] -> m ()
   genExpression :: MonadCode s m c => TypedExp -> m c
   genOp :: OperationName -> c

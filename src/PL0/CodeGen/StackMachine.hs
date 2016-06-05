@@ -140,6 +140,14 @@ instance Code StackMachineCode where
         genDecs n ds
       genDecs n (d:ds) = genDecs n ds
 
+  genArgs args = genArgs' (-(length args)) args
+    where
+      genArgs' n [] = return ()
+      genArgs' n (VarDecl name ty:ds) = do
+        scope %= addEntry name (VarEntry ty (Just n))
+        genArgs' (n + 1) ds
+      genArgs' n (d:ds) = error "codegen: something other than VarDecl was in procedure parameters"
+
   genProcedures [] = return ()
   genProcedures (ProcedureDef name params block:ds) = do
     entry <- findEntry name <$> use scope
@@ -148,6 +156,7 @@ instance Code StackMachineCode where
         pos <- use $ mainCode . size
         scope %= addEntry name (ProcEntry tys (Just pos))
         scope %= enterScope name
+        genArgs params
         genBlock block
         mainCode <>= singleton RETURN
         scope %= leaveScope
