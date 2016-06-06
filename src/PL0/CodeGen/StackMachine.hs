@@ -48,8 +48,8 @@ instance Code StackMachineCode where
     genProcedures decs
     entry <- use $ mainCode . size
     cst <- genStatement st
-    mainCode %= flip mappend cst
-    mainCode %= flip mappend (toCode [ZERO,STOP])
+    mainCode <>= cst
+    mainCode <>= toCode [ZERO,STOP]
     code <- use mainCode
     return $ Program entry code
 
@@ -58,7 +58,7 @@ instance Code StackMachineCode where
     genDeclarations decs
     genProcedures decs
     cst <- genStatement st
-    mainCode %= flip mappend cst
+    mainCode <>= cst
 
   genAlloc n = toCode [LOAD_CON n, ALLOC_STACK]
 
@@ -117,10 +117,10 @@ instance Code StackMachineCode where
         case entry of
           Just (ConstEntry ty (Left expr)) -> do
             scope %= addEntry name (ConstEntry ty (Right $ n + 3))
-            mainCode %= flip mappend (genAlloc 1)
+            mainCode <>= genAlloc 1
             cexpr <- genExpression expr
-            mainCode %= flip mappend cexpr
-            mainCode %= flip mappend (toCode [LOAD_CON (n + 3), STORE_FRAME])
+            mainCode <>= cexpr
+            mainCode <>= toCode [LOAD_CON (n + 3), STORE_FRAME]
           Just (ConstEntry ty _) -> error $ "codegen: " ++ name ++ " (const) already has an address"
           Just _ -> error $ "codegen: " ++ name ++ " not a constant"
           Nothing -> error $ "codegen: " ++ name ++ " not found"
@@ -130,7 +130,7 @@ instance Code StackMachineCode where
         case entry of
           Just (VarEntry ty Nothing) -> do
             scope %= addEntry name (VarEntry ty (Just $ n + 3))
-            mainCode %= flip mappend (genAlloc 1)
+            mainCode <>= genAlloc 1
           Just (VarEntry ty _) -> error $ "codegen: " ++ name ++ " (var) already has an address"
           Just _ -> error $ "codegen: " ++ name ++ " not a Variable"
           Nothing -> error $ "codegen: " ++ name ++ " not found"
