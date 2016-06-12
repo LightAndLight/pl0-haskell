@@ -1,12 +1,13 @@
+var d : int;
 procedure a(b : int, c : int) =
 begin
-  write (b + c)
+  d := b + c
 end;
 
 var b : int;
     c : int;
 begin
-  read b;
-  read c;
-  call a(6,5)
+  read d;
+  call a(6,5);
+  write d
 end
