@@ -4,7 +4,7 @@
 
 module PL0.Internal where
 
-import           Control.Lens (Lens')
+import           Control.Lens hiding (Const)
 import Control.Monad.Except
 import Control.Monad.State
 import Data.ITree
@@ -128,9 +128,13 @@ newtype Scope = Scope { unScope :: ITreeZipper String SymbolTable }
 
 class HasScope s where
   scope :: Lens' s Scope
+  locals :: Lens' s SymbolTable
 
 instance HasScope Scope where
   scope = id
+  locals = lens getTable setTable
+    where
+      setTable (Scope sc) t = Scope $ Z.update (setValue t) sc
 
 topLevelScope :: Scope
 topLevelScope = Scope . Z.zipITree $ itree emptySymbolTable M.empty
@@ -139,7 +143,7 @@ extendScope :: String -> Scope -> Scope
 extendScope str (Scope sc) = Scope . Z.down str $ Z.update (setLeaf str M.empty) sc
 
 addEntry :: String -> SymEntry -> Scope -> Scope
-addEntry name entry (Scope sc) = Scope $ Z.update (fmap $ M.insert name entry) sc
+addEntry name entry (Scope sc) = Scope $ Z.update (\t -> setValue (M.insert name entry $ getValue t) t) sc
 
 findEntry :: String -> Scope -> Maybe SymEntry
 findEntry name (Scope sc)
@@ -158,3 +162,6 @@ leaveScope (Scope sc) = Scope $ Z.up sc
 
 getTable :: Scope -> SymbolTable
 getTable (Scope sc) = Z.extractValue sc
+
+getScopeName :: Scope -> Maybe String
+getScopeName (Scope sc) = Z.currentKey sc
