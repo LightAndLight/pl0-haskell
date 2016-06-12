@@ -22,6 +22,7 @@ import           Control.Lens                 hiding (Const)
 import           Control.Monad.Except
 import           Control.Monad.State
 import           Data.Foldable
+import qualified Data.Map                     as M
 import           Data.Monoid
 
 data StackMachineCode = StackMachineCode {
@@ -44,9 +45,11 @@ singleton a = toCode [a]
 instance Code StackMachineCode where
   data Program StackMachineCode = Program { entry :: Int, code :: StackMachineCode }
   generate (Tree (Block decs st)) = do
-    genDeclarations decs
+    mainCode .= mempty
     genProcedures decs
     entry <- use $ mainCode . size
+    mainCode <>= toCode [ZERO,ZERO]
+    genDeclarations decs
     cst <- genStatement st
     mainCode <>= cst
     mainCode <>= toCode [ZERO,STOP]
@@ -60,8 +63,39 @@ instance Code StackMachineCode where
     cst <- genStatement st
     mainCode <>= cst
 
+  genAlloc 0 = singleton NO_OP
+  genAlloc 1 = singleton $ LOAD_CON 0x80808080
   genAlloc n = toCode [LOAD_CON n, ALLOC_STACK]
 
+  genExpression (DecidedOp op _ args) = liftA2 mappend (fold <$> traverse genExpression args) (pure $ genOp op)
+  genExpression (Variable _ name) = do
+    entry <- M.lookup name <$> use (scope . locals)
+    case entry of
+      Just (VarEntry _ (Just addr)) -> pure (singleton $ LOAD_CON addr)
+      Just (VarEntry _ Nothing) -> error $ "codegen: address for " ++ name ++ " not set"
+      Just _ -> error $ "codegen: " ++ name ++ " not a variable"
+      Nothing -> mappend (toCode [ZERO,LOAD_FRAME,LOAD_ABS]) <$> searchStackFrames name
+    where
+      searchStackFrames name = do
+        scopeName <- getScopeName <$> use scope
+        scope %= leaveScope
+        entry <- M.lookup name <$> use (scope . locals)
+        code <- case entry of
+          Just (VarEntry _ (Just addr)) -> pure $ toCode [LOAD_CON addr,ADD,TO_LOCAL]
+          Just (VarEntry _ Nothing) -> error $ "codegen: address for " ++ name ++ " not set"
+          Just _ -> error $ "codegen: " ++ name ++ " not a variable"
+          Nothing -> mappend (singleton LOAD_ABS) <$> searchStackFrames name
+        case scopeName of
+          Just sn -> scope %= enterScope sn
+          Nothing -> return ()
+        return code
+  genExpression (Narrow (TSub _ from to) expr) = do
+    cexpr <- genExpression expr
+    cfrom <- genExpression from
+    cto <- genExpression to
+    return $ cexpr <> cfrom <> cto <> singleton BOUND
+  genExpression (Dereference _ expr) = liftA2 mappend (genExpression expr) (pure $ singleton LOAD_FRAME)
+  genExpression (Const _ val) = return . singleton $ LOAD_CON val
   genStatement (Assignment lvalue expr) = do
     etoCode <- genExpression expr
     ltoCode <- genExpression lvalue
@@ -115,38 +149,25 @@ instance Code StackMachineCode where
       genDecs n (ConstDef name e:ds) = do
         entry <- findEntry name <$> use scope
         case entry of
-          Just (ConstEntry ty (Left expr)) -> do
-            scope %= addEntry name (ConstEntry ty (Right $ n + 3))
-            mainCode <>= genAlloc 1
-            cexpr <- genExpression expr
+          Just (ConstEntry _ (Right addr)) -> do
+            cexpr <- genExpression e
             mainCode <>= cexpr
-            mainCode <>= toCode [LOAD_CON (n + 3), STORE_FRAME]
-          Just (ConstEntry ty _) -> error $ "codegen: " ++ name ++ " (const) already has an address"
+          Just (ConstEntry ty _) -> error $ "codegen: " ++ name ++ " (const) has no address"
           Just _ -> error $ "codegen: " ++ name ++ " not a constant"
           Nothing -> error $ "codegen: " ++ name ++ " not found"
         genDecs (n + 1) ds
       genDecs n (VarDecl name _:ds) = do
         entry <- findEntry name <$> use scope
         case entry of
-          Just (VarEntry ty Nothing) -> do
-            scope %= addEntry name (VarEntry ty (Just $ n + 3))
-            mainCode <>= genAlloc 1
-          Just (VarEntry ty _) -> error $ "codegen: " ++ name ++ " (var) already has an address"
-          Just _ -> error $ "codegen: " ++ name ++ " not a Variable"
+          Just (VarEntry ty (Just addr)) -> mainCode <>= genAlloc 1
+          Just (VarEntry ty _) -> error $ "codegen: " ++ name ++ " (var) has no address"
+          Just _ -> error $ "codegen: " ++ name ++ " not a variable"
           Nothing -> error $ "codegen: " ++ name ++ " not found"
         genDecs (n + 1) ds
       genDecs n (p@ProcedureDef{}:ds) = do
         procedures <>= [p]
         genDecs n ds
       genDecs n (d:ds) = genDecs n ds
-
-  genArgs args = genArgs' (-(length args)) args
-    where
-      genArgs' n [] = return ()
-      genArgs' n (VarDecl name ty:ds) = do
-        scope %= addEntry name (VarEntry ty (Just n))
-        genArgs' (n + 1) ds
-      genArgs' n (d:ds) = error "codegen: something other than VarDecl was in procedure parameters"
 
   genProcedures [] = return ()
   genProcedures (ProcedureDef name params block:ds) = do
@@ -156,7 +177,6 @@ instance Code StackMachineCode where
         pos <- use $ mainCode . size
         scope %= addEntry name (ProcEntry tys (Just pos))
         scope %= enterScope name
-        genArgs params
         genBlock block
         mainCode <>= singleton RETURN
         scope %= leaveScope
@@ -177,19 +197,3 @@ instance Code StackMachineCode where
   genOp Times = singleton MPY
   genOp Divide = singleton DIV
   genOp Negate = singleton NEGATE
-
-  genExpression (DecidedOp op _ args) = liftA2 mappend (fold <$> traverse genExpression args) (pure $ genOp op)
-  genExpression (Variable _ name) = do
-    entry <- findEntry name <$> use scope
-    case entry of
-      Just (VarEntry _ (Just addr)) -> pure (singleton $ LOAD_CON addr)
-      Just (VarEntry _ Nothing) -> error $ "codegen: address for " ++ name ++ " not set"
-      Just _ -> error $ "codegen: " ++ name ++ " not a variable"
-      Nothing -> error $ "codegen: " ++ name ++ " not found"
-  genExpression (Narrow (TSub _ from to) expr) = do
-    cexpr <- genExpression expr
-    cfrom <- genExpression from
-    cto <- genExpression to
-    return $ cexpr <> cfrom <> cto <> singleton BOUND
-  genExpression (Dereference _ expr) = liftA2 mappend (genExpression expr) (pure $ singleton LOAD_FRAME)
-  genExpression (Const _ val) = return . singleton $ LOAD_CON val
