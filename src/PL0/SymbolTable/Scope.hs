@@ -8,6 +8,7 @@ module PL0.SymbolTable.Scope (
   , addEntry
   , findEntry
   , getTable
+  , getScopeName
 ) where
 
 import           PL0.Internal
