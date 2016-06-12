@@ -6,6 +6,7 @@ module Data.ITree.Zipper (
   , isTop
   , update
   , extractValue
+  , currentKey
   , unzipITree
 ) where
 
@@ -48,3 +49,7 @@ unzipITree (ITreeZipper (t,_)) = t
 
 extractValue :: Ord k => ITreeZipper k a -> a
 extractValue = getValue . unzipITree
+
+currentKey :: Ord k => ITreeZipper k a -> Maybe k
+currentKey (ITreeZipper (_,[])) = Nothing
+currentKey (ITreeZipper (_,(k,_,_):_)) = Just k
