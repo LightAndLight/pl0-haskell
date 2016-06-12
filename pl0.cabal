@@ -25,6 +25,7 @@ library
                      , PL0.Parser
                      , PL0.StackMachine
                      , PL0.StackMachine.Instruction
+                     , PL0.StackMachine.Linker
                      , PL0.StaticChecker
                      , PL0.SymbolTable
                      , PL0.SymbolTable.Scope
