@@ -5,6 +5,7 @@ import           PL0.CodeGen.StackMachine
 import           PL0.Lexer
 import           PL0.Parser
 import           PL0.StackMachine
+import           PL0.StackMachine.Linker
 import           PL0.StaticChecker
 import           PL0.SymbolTable.Scope
 
@@ -23,6 +24,7 @@ main = do
       let full = ExceptT . return . scanTokens
              >=> ExceptT . return . parseTokens
              >=> checkProgram
+             >=> link
              >=> generate
       case flip evalState initialState . runExceptT . full $ content of
         Right (Program entry code) -> runProgramFrom entry 1000 (code ^. instructions) >>= print
