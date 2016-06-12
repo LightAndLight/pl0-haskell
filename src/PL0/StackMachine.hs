@@ -254,7 +254,8 @@ interpreter = do
           location <- addTopFP
           value <- pop
           sdata <- use stackData
-          if location < 0 || location > V.length sdata
+          sp <- use stackPointer
+          if location < 0 || sp < location
             then throwError $ AddressOutOfRange location
             else do
               liftIO $ V.write sdata location value
@@ -262,7 +263,8 @@ interpreter = do
         LOAD_FRAME -> do
           sdata <- use stackData
           location <- addTopFP
-          if location < 0 || location >= V.length sdata
+          sp <- use stackPointer
+          if location < 0 || sp < location
             then throwError $ AddressOutOfRange location
             else do
               value <- liftIO $ V.read sdata location
