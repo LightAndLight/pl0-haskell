@@ -30,7 +30,6 @@ class Monoid c => Code c where
   genBlock :: MonadCode s m c => Block TypedExp -> m ()
   genStatement :: MonadCode s m c => Statement TypedExp -> m c
   genDeclarations :: MonadCode s m c => [Declaration TypedExp] -> m ()
-  genArgs :: MonadCode s m c => [Declaration TypedExp] -> m ()
   genProcedures :: MonadCode s m c => [Declaration TypedExp] -> m ()
   genExpression :: MonadCode s m c => TypedExp -> m c
   genOp :: OperationName -> c
@@ -56,6 +55,7 @@ instance Code c => HasScope (CodeGenState c) where
     where
       getScope (CodeGenState sc _ _) = sc
       setScope (CodeGenState _ ps c) sc' = CodeGenState sc' ps c
+  locals = scope . locals
 
 class HasProcedures s where
   procedures :: Lens' s [Declaration TypedExp]
