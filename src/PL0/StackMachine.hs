@@ -4,7 +4,14 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module PL0.StackMachine (
-  runProgramFrom
+  HasStack(..)
+  , MachineError(..)
+  , MachineState(..)
+  , newStack
+  , peek
+  , pop
+  , push
+  , runProgramFrom
 ) where
 
 import           PL0.StackMachine.Instruction
@@ -57,31 +64,33 @@ newtype StackMachine a = StackMachine {
 newStack :: MonadIO m => Int -> m Stack
 newStack size = Stack (-1) <$> liftIO (V.new size)
 
+checkBounds :: MonadError MachineError m => Int -> IOVector e -> m a -> m a
+checkBounds sp sdata m
+  | sp < 0 = throwError StackUnderflow
+  | sp >= V.length sdata = throwError StackOverflow
+  | otherwise = m
+
 push :: (HasStack s, MonadIO m, MonadState s m, MonadError MachineError m) => Int -> m ()
 push a = do
   stackPointer += 1
   sp <- use stackPointer
   sdata <- use stackData
-  if sp >= V.length sdata
-    then throwError StackOverflow
-    else liftIO $ V.write sdata sp a
+  checkBounds sp sdata (liftIO $ V.write sdata sp a)
 
 pop :: (HasStack s, MonadIO m, MonadError MachineError m, MonadState s m) => m Int
 pop = do
   sp <- use stackPointer
-  if sp < 0
-    then throwError StackUnderflow
-    else do
-      sdata <- use stackData
-      a <- liftIO $ V.read sdata sp
-      stackPointer -= 1
-      return a
+  sdata <- use stackData
+  checkBounds sp sdata $ do
+    a <- liftIO $ V.read sdata sp
+    stackPointer -= 1
+    return a
 
 peek :: (HasStack s, MonadIO m, MonadError MachineError m, MonadState s m) => m Int
 peek = do
   sp <- use stackPointer
   sdata <- use stackData
-  liftIO $ V.read sdata sp
+  checkBounds sp sdata (liftIO $ V.read sdata sp)
 
 runProgramFrom :: Int -> Int -> [Instruction] -> IO (Either MachineError Int)
 runProgramFrom pc stackSize program = do
