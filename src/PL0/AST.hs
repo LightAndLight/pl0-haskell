@@ -103,7 +103,7 @@ equalsOp :: UndecidedOp
 equalsOp = OOperation Equals [binary TBool TBool,relational]
 
 nequalsOp :: UndecidedOp
-nequalsOp = OOperation Equals [binary TBool TBool,relational]
+nequalsOp = OOperation NEquals [binary TBool TBool,relational]
 
 lequalsOp :: UndecidedOp
 lequalsOp = Operation LEquals relational
