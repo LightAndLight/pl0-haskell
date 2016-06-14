@@ -15,21 +15,21 @@ import Control.Monad.State
 type MonadLinker s m = (HasScope s, MonadError String m, MonadState s m)
 
 link :: MonadLinker s m => Tree TypedExp -> m (Tree TypedExp)
-link (Tree block) = Tree <$> linkBlock block
+link t@(Tree (Block decs _)) = do
+  linkDecs 2 decs
+  return t
 
-linkBlock :: MonadLinker s m => Block TypedExp -> m (Block TypedExp)
-linkBlock b@(Block decs _) = do
-  linkDecs decs
-  return b
+linkBlock :: MonadLinker s m => Block TypedExp -> m ()
+linkBlock b@(Block decs _) = linkDecs 3 decs
 
-linkDecs :: MonadLinker s m => [Declaration TypedExp] -> m ()
-linkDecs = linkDecs' 0
+linkDecs :: MonadLinker s m => Int -> [Declaration TypedExp] -> m ()
+linkDecs off = linkDecs' 0
   where
     linkDecs' n [] = return ()
     linkDecs' n (ConstDef name e:ds) = do
       entry <- findEntry name <$> use scope
       case entry of
-        Just (ConstEntry ty (Left expr)) -> scope %= addEntry name (ConstEntry ty (Right $ n + 2))
+        Just (ConstEntry ty (Left expr)) -> scope %= addEntry name (ConstEntry ty (Right $ n + off))
         Just (ConstEntry ty _) -> error $ "linker: " ++ name ++ " (const) already has an address"
         Just _ -> error $ "linker: " ++ name ++ " not a constant"
         Nothing -> error $ "linker: " ++ name ++ " not found"
@@ -37,7 +37,7 @@ linkDecs = linkDecs' 0
     linkDecs' n (VarDecl name _:ds) = do
       entry <- findEntry name <$> use scope
       case entry of
-        Just (VarEntry ty Nothing) -> scope %= addEntry name (VarEntry ty (Just $ n + 2))
+        Just (VarEntry ty Nothing) -> scope %= addEntry name (VarEntry ty (Just $ n + off))
         Just (VarEntry ty _) -> error $ "linker: " ++ name ++ " (var) already has an address"
         Just _ -> error $ "linker: " ++ name ++ " not a variable"
         Nothing -> error $ "linker: " ++ name ++ " not found"
