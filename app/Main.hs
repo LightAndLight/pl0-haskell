@@ -1,6 +1,5 @@
 module Main where
 
-import           PL0.CodeGen.Class
 import           PL0.CodeGen.StackMachine
 import           PL0.Lexer
 import           PL0.Parser
@@ -12,7 +11,9 @@ import           PL0.SymbolTable.Scope
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
-import           Control.Monad.State
+import           Control.Monad.State      (evalStateT)
+import qualified Data.ByteString          as B
+import           Data.Serialize
 import           System.Environment
 
 main = do
@@ -26,6 +27,9 @@ main = do
              >=> checkProgram
              >=> link
              >=> generate
-      case flip evalState initialState . runExceptT . full $ content of
-        Right (Program entry code) -> runProgramFrom entry 1000 (code ^. instructions) >>= print
-        Left err -> print err
+      flip evalStateT initialState . runExceptT $ do
+        program <- full content
+        liftIO $ B.writeFile "test.vm" (encode program)
+        program' <- liftIO $ B.readFile "test.vm"
+        liftIO $ runProgram program'
+      return ()
