@@ -7,11 +7,13 @@ module PL0.StackMachine (
   HasStack(..)
   , MachineError(..)
   , MachineState(..)
+  , Program(..)
   , newStack
   , peek
   , pop
   , push
-  , runProgramFrom
+  , runProgramSized
+  , runProgram
 ) where
 
 import           PL0.StackMachine.Instruction
@@ -23,8 +25,11 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import           Control.Monad.State
 import           Data.Array
+import Data.ByteString (ByteString)
 import           Data.Char
 import           Data.Bits
+import Data.Serialize hiding (get, put)
+import qualified Data.Serialize as B
 import           Data.Vector.Mutable (IOVector)
 import qualified Data.Vector.Mutable as V
 
@@ -47,18 +52,14 @@ data MachineError = ValueOutOfRange Int Int Int
                   | StackUnderflow
                   | DivByZero
                   | ReadNonInt
+                  | InvalidBinary
                   deriving (Eq, Show)
 
-type Program = Array Int Instruction
-
-newtype StackMachine a = StackMachine {
-  runStackMachine :: ReaderT Program (ExceptT MachineError (StateT MachineState IO)) a
-} deriving (
-  Functor, Applicative, Monad,
-  MonadReader Program,
-  MonadState MachineState,
-  MonadError MachineError,
-  MonadIO
+type MonadMachine s m = (
+  MonadState s m
+  , MonadReader (Array Int Instruction) m
+  , MonadError MachineError m
+  , MonadIO m
   )
 
 newStack :: MonadIO m => Int -> m Stack
@@ -92,15 +93,36 @@ peek = do
   sdata <- use stackData
   checkBounds sp sdata (liftIO $ V.read sdata sp)
 
-runProgramFrom :: Int -> Int -> [Instruction] -> IO (Either MachineError Int)
-runProgramFrom pc stackSize program = do
+data Program = Program {
+  programEntry :: Int
+  , programInstructions :: [Instruction]
+}
+
+instance Serialize Program where
+  put (Program entry insts) = do
+    B.put "STACKM"
+    B.put entry
+    B.put insts
+  get = expect "STACKM" *> pure Program <*> B.get <*> B.get
+
+runProgram :: ByteString -> IO (Either MachineError Int)
+runProgram input = case decode input of
+  Right (Program entry insts) -> do
+    let program = listArray (0,length insts) insts
+    vect <- newStack 1000
+    flip evalStateT (MachineState 0 entry vect)
+      . runExceptT
+      . flip runReaderT program
+      $ interpreter
+  Left err -> return $ Left InvalidBinary
+
+runProgramSized :: Int -> Program -> IO (Either MachineError Int)
+runProgramSized stackSize (Program entry program) = do
   vect <- newStack stackSize
-  flip evalStateT (MachineState 0 pc vect)
+  flip evalStateT (MachineState 0 entry vect)
     . runExceptT
     . flip runReaderT (listArray (0,length program) program)
-    . runStackMachine $ interpreter
-
-type MonadMachine s m = (MonadState s m, MonadReader Program m, MonadError MachineError m, MonadIO m)
+    $ interpreter
 
 runOnMachine :: (HasStack s, MonadMachine s m) => (Int -> Int -> Int) -> m ()
 runOnMachine f = do
