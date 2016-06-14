@@ -33,6 +33,7 @@ library
   build-depends:       array
                      , base >= 4.7 && < 5
                      , bytestring
+                     , cereal
                      , containers
                      , dlist
                      , lens
@@ -47,6 +48,8 @@ executable pl0-exe
   main-is:             Main.hs
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
+                     , bytestring
+                     , cereal
                      , lens
                      , mtl
                      , pl0
