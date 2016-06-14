@@ -1,4 +1,10 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 module PL0.StackMachine.Instruction where
+
+import           Data.Serialize
+import           Data.Word
+import           GHC.Generics
 
 data Instruction = NO_OP
                  | BR
@@ -37,4 +43,6 @@ data Instruction = NO_OP
                  | LOAD_MULTI
                  | STORE_MULTI
                  | STOP
-                 deriving Show
+                 deriving (Generic,Show)
+
+instance Serialize Instruction where
