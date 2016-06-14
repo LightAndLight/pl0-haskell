@@ -8,11 +8,11 @@ module PL0.StackMachine (
   , MachineError(..)
   , MachineState(..)
   , Program(..)
+  , interpreter
   , newStack
   , peek
   , pop
   , push
-  , runProgramSized
   , runProgram
 ) where
 
@@ -115,14 +115,6 @@ runProgram input = case decode input of
       . flip runReaderT program
       $ interpreter
   Left err -> return $ Left InvalidBinary
-
-runProgramSized :: Int -> Program -> IO (Either MachineError Int)
-runProgramSized stackSize (Program entry program) = do
-  vect <- newStack stackSize
-  flip evalStateT (MachineState 0 entry vect)
-    . runExceptT
-    . flip runReaderT (listArray (0,length program) program)
-    $ interpreter
 
 runOnMachine :: (HasStack s, MonadMachine s m) => (Int -> Int -> Int) -> m ()
 runOnMachine f = do

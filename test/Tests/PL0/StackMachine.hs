@@ -10,6 +10,7 @@ import           PL0.StackMachine.Instruction
 import           Control.Lens
 import           Control.Monad.Except
 import           Control.Monad.IO.Class
+import           Control.Monad.Reader
 import           Control.Monad.State
 import           Data.Array
 import qualified Data.Vector.Mutable          as V
@@ -25,6 +26,14 @@ newtype TestStack a = TestStack { unTestStack :: ExceptT MachineError (StateT Ma
     MonadState MachineState,
     MonadIO
   )
+
+runProgramSized :: Int -> [Instruction] -> IO (Either MachineError Int)
+runProgramSized stackSize program = do
+  vect <- newStack stackSize
+  flip evalStateT (MachineState 0 0 vect)
+    . runExceptT
+    . flip runReaderT (listArray (0,length program) program)
+    $ interpreter
 
 runTestStack :: Int -> TestStack a -> IO (Either MachineError a,MachineState)
 runTestStack stackSize test = do
@@ -119,7 +128,7 @@ prop_peek_stackoverflow (GreaterEqual g n) = monadicIO $ do
 
 prop_div_by_zero_error :: Int -> Property
 prop_div_by_zero_error n = monadicIO $ do
-  res <- run . runProgramFrom 0 10 $ [LOAD_CON n, ZERO, DIV, STOP]
+  res <- run . runProgramSized 10 $ [LOAD_CON n, ZERO, DIV, STOP]
   assert $ res == Left DivByZero
 
 data NotIn = NotIn Int Int Int deriving Show
@@ -133,7 +142,7 @@ instance Arbitrary NotIn where
 
 prop_range_error :: NotIn -> Property
 prop_range_error (NotIn n from to) = monadicIO $ do
-  res <- run . runProgramFrom 0 10 $ [LOAD_CON n, LOAD_CON from, LOAD_CON to, BOUND, STOP]
+  res <- run . runProgramSized 10 $ [LOAD_CON n, LOAD_CON from, LOAD_CON to, BOUND, STOP]
   assert $ res == Left (ValueOutOfRange n from to)
 
 return []
