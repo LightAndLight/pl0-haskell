@@ -20,6 +20,7 @@ library
                      , PL0.AST
                      , PL0.AST.Class
                      , PL0.CodeGen.Class
+                     , PLO.CodeGen.LLVM
                      , PL0.CodeGen.StackMachine
                      , PL0.Lexer
                      , PL0.Parser
@@ -37,6 +38,8 @@ library
                      , containers
                      , dlist
                      , lens
+                     , llvm-general
+                     , llvm-general-pure
                      , mtl
                      , transformers
                      , vector
