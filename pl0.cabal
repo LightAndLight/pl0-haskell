@@ -36,6 +36,7 @@ library
                      , cereal
                      , containers
                      , dlist
+                     , hs-java
                      , lens
                      , mtl
                      , transformers

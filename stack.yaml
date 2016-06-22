@@ -8,7 +8,7 @@ resolver: lts-5.15
 packages:
 - '.'
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
-extra-deps: []
+extra-deps: [hs-java-0.3.4, binary-state-0.1.1, control-monad-exception-0.11.2, failure-0.2.0.3]
 
 # Override default flag values for local packages and extra-deps
 flags: {}
